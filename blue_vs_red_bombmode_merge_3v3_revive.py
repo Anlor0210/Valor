@@ -34,6 +34,7 @@ BOMB_TIMER_MS  = 30_000
 # Revive rules
 REVIVE_MS = 10_000
 REVIVE_RANGE = 70
+DOWNED_TIMEOUT_MS = 5_000
 
 # Colors
 WHITE=(255,255,255); GRID_DARK=(30,30,32); GRID_LINE=(36,36,38)
@@ -205,6 +206,8 @@ class Agent:
         self.x,self.y=x,y; self.color=color; self.r=RADIUS
         self.hp=MAX_HP; self.last_shot=0; self.dir=(1,0)
         self.alive=True; self.downed=False
+        self.downed_at=0
+        self.removed=False
         self.team=team; self.is_player=is_player; self.name=name
         self.lock_reason=None; self.lock_start=0
         self.reviving_target=None
@@ -216,11 +219,17 @@ class Agent:
     def take_damage(self,dmg):
         if not self.alive: return
         self.hp=max(0,self.hp-dmg)
-        if self.lock_reason in ("plant","defuse","revive"): self.lock_reason=None
+        if self.lock_reason in ("plant","defuse","revive"):
+            self.lock_reason=None
+            self.reviving_target=None
         if self.hp<=0:
             self.downed=True; self.alive=False  # cannot act; can be revived
+            self.downed_at=pygame.time.get_ticks()
+            self.reviving_target=None
     def revive(self):
         self.hp=MAX_HP//2; self.alive=True; self.downed=False
+        self.downed_at=0
+        self.reviving_target=None
     def move(self, keys):
         if not self.alive or self.lock_reason is not None or self.downed: return
         if self.is_player:
@@ -241,15 +250,20 @@ class Agent:
         bullets.append(Bullet(self.x+v[0]*(self.r+6), self.y+v[1]*(self.r+6),
                               v[0]*BULLET_SPEED, v[1]*BULLET_SPEED, self.team))
     def draw(self,surf):
-        col = (120,120,120) if self.downed else self.color
+        col = self.color
+        if self.downed:
+            col=(120,120,120)
+        elif not self.alive:
+            col=(60,60,60)
         pygame.draw.circle(surf,col,(int(self.x),int(self.y)),self.r)
         fx=self.x+self.dir[0]*self.r*1.4; fy=self.y+self.dir[1]*self.r*1.4
-        pygame.draw.line(surf,WHITE,(self.x,self.y),(fx,fy),2 if not self.downed else 1)
+        pygame.draw.line(surf,WHITE,(self.x,self.y),(fx,fy),2 if self.alive and not self.downed else 1)
         # HP bar & name
-        if not self.downed:
+        if self.alive:
             pygame.draw.rect(surf,(40,40,40),(self.x-20,self.y-28,40,6))
             pygame.draw.rect(surf,GREEN,(self.x-20,self.y-28,40*self.hp/MAX_HP,6))
-        label=font.render(self.name + (" (DOWN)" if self.downed else ""),True,GREY)
+        status = " (DOWN)" if self.downed else (" (DEAD)" if not self.alive else "")
+        label=font.render(self.name + status,True,GREY)
         surf.blit(label,(self.x-label.get_width()/2,self.y+self.r+3))
 
 # ==================== BOMB STATE ====================
@@ -497,6 +511,15 @@ def main():
                         if t.alive: t.take_damage(BULLET_DAMAGE)
                         b.dead=True; break
             bullets=[b for b in bullets if not b.dead]
+
+            # Downed timeout -> death
+            tick = pygame.time.get_ticks()
+            for ag in attackers + defenders:
+                if ag.downed and tick - ag.downed_at >= DOWNED_TIMEOUT_MS:
+                    ag.downed=False
+                    ag.alive=False
+                    ag.hp=0
+                    ag.reviving_target=None
 
             # Bomb timer
             if bomb.state=="planted" and pygame.time.get_ticks() - bomb.planted_time >= BOMB_TIMER_MS:
