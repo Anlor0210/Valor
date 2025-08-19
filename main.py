@@ -184,7 +184,7 @@ def main():
                 ag.downed=False; ag.alive=False; ag.hp=0; ag.reviving_target=None
                 ag.bleed_paused=0; ag.bleed_paused_start=None
 
-        if bomb.state=='planted' and pygame.time.get_ticks()-bomb.planted_time >= BOMB_MS:
+        if bomb.state=='planted' and pygame.time.get_ticks()-bomb.planted_time >= BOMB_TIMER_MS:
             bomb.state='exploded'
 
         A_active=len(active_or_downed(attackers))
