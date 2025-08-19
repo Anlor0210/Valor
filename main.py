@@ -1,8 +1,16 @@
 import random, sys, pygame
 from config import *
-from map import build_static_map, build_grid, pos_to_cell, cell_center, nearest_passable_cell, has_line_of_sight
+from map import (
+    build_static_map,
+    build_grid,
+    pos_to_cell,
+    cell_center,
+    nearest_passable_cell,
+    has_line_of_sight,
+)
 from entities import Agent, Bullet, BombState
 from ai import bot_ai, sees
+from render import load_sprites, draw_bomb
 
 pygame.init()
 pygame.display.set_caption("Valor 4v4 BombMode")
@@ -10,6 +18,7 @@ screen=pygame.display.set_mode((VIEW_W, VIEW_H))
 clock=pygame.time.Clock()
 font=pygame.font.SysFont("consolas",18)
 big_font=pygame.font.SysFont("consolas",40,bold=True)
+sprites = load_sprites()
 
 
 def clamp(value, min_value, max_value):
@@ -214,7 +223,7 @@ def main():
             pygame.draw.rect(screen, WALL_DARK, rect.move(-cam_x,-cam_y))
             pygame.draw.rect(screen, WALL_EDGE, rect.move(-cam_x,-cam_y),2)
         pygame.draw.circle(screen,(60,60,60),(bomb.zone_center[0]-cam_x,bomb.zone_center[1]-cam_y),bomb.radius*GRID,2)
-        pygame.draw.circle(screen,(120,120,160),(bomb.zone_center[0]-cam_x,bomb.zone_center[1]-cam_y),8)
+        draw_bomb(screen, bomb, sprites, (cam_x, cam_y))
 
         for a in attackers:
             a.draw(screen,(cam_x,cam_y),font)
