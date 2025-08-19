@@ -1,6 +1,5 @@
 import math, random, heapq, pygame
 from config import (
-    GRID,
     FOV_DEGREES,
     FOV_RANGE,
     BOT_SPEED,

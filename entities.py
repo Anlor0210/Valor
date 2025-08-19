@@ -7,8 +7,6 @@ from config import (
     MAX_HP,
     LOW_HP_THRESH,
     PLAYER_SPEED,
-    REVIVE_MS,
-    REVIVE_RANGE,
     WIDTH,
     HEIGHT,
     GRID,
