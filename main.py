@@ -31,6 +31,15 @@ def random_zone(grid):
         if good:
             return cell_center(c,r), radius
 
+def _make_nav():
+    return {"path": None, "goal": None, "idx": 0, "last_compute": 0}
+
+def _get_nav(navs, agent):
+    # ensure a nav entry exists for this agent object
+    if agent not in navs:
+        navs[agent] = _make_nav()
+    return navs[agent]
+
 def reset_round():
     walls=build_static_map()
     grid=build_grid(walls)
@@ -48,7 +57,7 @@ def reset_round():
         defenders.append(Agent(*def_spawns[0], RED, "DEF", True, "YOU"))
         for i in range(1,4): defenders.append(Agent(*def_spawns[i], RED_BOT, "DEF", name=f"ALLY-{i}"))
         for i in range(4): attackers.append(Agent(*att_spawns[i], BLUE_BOT if i else BLUE, "ATT", name=f"ENEMY-{i+1}"))
-    navs={id(a):{"path":None,"goal":None,"idx":0,"last_compute":0} for a in attackers[1:]+defenders[1:]}
+    navs = {a: _make_nav() for a in attackers[1:] + defenders}
     return walls,grid,bomb,attackers,defenders,navs
 
 def alive(lst): return [a for a in lst if a.alive]
@@ -120,10 +129,10 @@ def main():
         # Bots
         for a in attackers[1:] if player.team=='ATT' else attackers:
             if not a.is_player:
-                bot_ai(a, defenders, attackers, walls, bullets, grid, navs[id(a)], bomb)
+                bot_ai(a, defenders, attackers, walls, bullets, grid, _get_nav(navs, a), bomb)
         for d in defenders[1:] if player.team=='DEF' else defenders:
             if not d.is_player:
-                bot_ai(d, attackers, defenders, walls, bullets, grid, navs[id(d)], bomb)
+                bot_ai(d, attackers, defenders, walls, bullets, grid, _get_nav(navs, d), bomb)
 
         for b in bullets:
             b.update(walls)
