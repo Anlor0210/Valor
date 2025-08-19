@@ -11,6 +11,8 @@ from map import (
 from entities import Agent, Bullet, BombState
 from ai import bot_ai, sees
 from render import load_sprites, draw_bomb
+from ui import draw_minimap, draw_buy_menu, draw_hud
+from economy import start_buy_phase, buy
 
 pygame.init()
 pygame.display.set_caption("Valor 4v4 BombMode")
@@ -77,27 +79,10 @@ def main():
     bullets=[]
     round_over=False; winner_text=""
     running=True
+    buy_end = start_buy_phase(attackers + defenders, None)
+    buy_menu_open = False
+    weapon_keys = list(WEAPONS.keys())
 
-    def draw_minimap(player):
-        scale = MINIMAP_SIZE / WIDTH
-        mini = pygame.Surface((MINIMAP_SIZE, MINIMAP_SIZE), pygame.SRCALPHA)
-        mini.fill((20,20,24))
-        for w in walls:
-            pygame.draw.rect(mini, (100,100,100), pygame.Rect(int(w.x*scale), int(w.y*scale), int(w.w*scale), int(w.h*scale)))
-        pygame.draw.circle(mini, (80,80,120), (int(bomb.zone_center[0]*scale), int(bomb.zone_center[1]*scale)), int(bomb.radius*GRID*scale),1)
-        now = pygame.time.get_ticks()
-        for ag in attackers + defenders:
-            if ag.team == player.team:
-                pygame.draw.circle(mini, ag.color, (int(ag.x*scale), int(ag.y*scale)), 3)
-            else:
-                seen_time = ag.seen_by_att if player.team=='ATT' else ag.seen_by_def
-                elapsed = now - seen_time
-                if elapsed < ENEMY_MEMORY_MS:
-                    alpha = max(50, 255 - int(255*elapsed/ENEMY_MEMORY_MS))
-                    dot = pygame.Surface((6,6), pygame.SRCALPHA)
-                    pygame.draw.circle(dot, (*ag.color, alpha), (3,3), 3)
-                    mini.blit(dot, (int(ag.x*scale)-3, int(ag.y*scale)-3))
-        screen.blit(mini, (VIEW_W - MINIMAP_SIZE - 20,20))
     while running:
         dt=clock.tick(FPS)
         for event in pygame.event.get():
@@ -108,6 +93,16 @@ def main():
             if event.type==pygame.KEYDOWN and event.key==pygame.K_F5:
                 walls,grid,bomb,attackers,defenders,navs = reset_round()
                 bullets=[]; round_over=False; winner_text=""
+                buy_end = start_buy_phase(attackers + defenders, None)
+                buy_menu_open = False
+            if event.type==pygame.KEYDOWN and event.key==pygame.K_b:
+                if pygame.time.get_ticks() < buy_end:
+                    buy_menu_open = not buy_menu_open
+            if buy_menu_open and event.type==pygame.KEYDOWN:
+                if pygame.K_1 <= event.key <= pygame.K_9:
+                    idx = event.key - pygame.K_1
+                    if idx < len(weapon_keys):
+                        buy(player, weapon_keys[idx])
 
         keys=pygame.key.get_pressed()
         player=[a for a in attackers+defenders if a.is_player][0]
@@ -145,12 +140,12 @@ def main():
             if bomb.state=='idle' and player.team=='ATT' and bomb.in_zone(player.pos):
                 if player.lock_reason is None:
                     player.lock_reason='plant'; player.lock_start=now
-                if now-player.lock_start>=PLANT_HOLD_MS:
+                if now-player.lock_start>=PLANT_MS:
                     bomb.commit_plant(player.team); player.lock_reason=None
             elif bomb.state=='planted' and player.team=='DEF' and bomb.in_zone(player.pos):
                 if player.lock_reason is None:
                     player.lock_reason='defuse'; player.lock_start=now
-                if now-player.lock_start>=DEFUSE_HOLD_MS:
+                if now-player.lock_start>=DEFUSE_MS:
                     bomb.commit_defuse(); player.lock_reason=None
         else:
             if player.lock_reason in ('plant','defuse'):
@@ -170,7 +165,8 @@ def main():
             targets = defenders if b.team=='ATT' else attackers
             for t in targets:
                 if (t.alive or t.downed) and pygame.Vector2(b.x,b.y).distance_to(t.pos) <= RADIUS+BULLET_RADIUS:
-                    if t.alive: t.take_damage(BULLET_DAMAGE)
+                    if t.alive:
+                        t.take_damage(b.dmg)
                     b.dead=True; break
         bullets=[b for b in bullets if not b.dead]
 
@@ -184,11 +180,11 @@ def main():
 
         tick = now_tick
         for ag in attackers + defenders:
-            if ag.downed and tick - ag.downed_at - ag.bleed_paused >= DOWNED_TIMEOUT_MS:
+            if ag.downed and tick - ag.downed_at - ag.bleed_paused >= BLEEDOUT_MS:
                 ag.downed=False; ag.alive=False; ag.hp=0; ag.reviving_target=None
                 ag.bleed_paused=0; ag.bleed_paused_start=None
 
-        if bomb.state=='planted' and pygame.time.get_ticks()-bomb.planted_time >= BOMB_TIMER_MS:
+        if bomb.state=='planted' and pygame.time.get_ticks()-bomb.planted_time >= BOMB_MS:
             bomb.state='exploded'
 
         A_active=len(active_or_downed(attackers))
@@ -236,17 +232,20 @@ def main():
             pygame.draw.rect(screen,(40,40,40),(x,y,w,h),border_radius=4)
             pygame.draw.rect(screen,col,(x,y,int(w*frac),h),border_radius=4)
         bar(16,16,300,14,(player.hp/MAX_HP) if player.alive else 0.0, BLUE if player.team=='ATT' else RED)
-        draw_minimap(player)
+        draw_hud(screen, player)
+        draw_minimap(screen, player, walls, bomb, attackers + defenders)
+        if buy_menu_open:
+            draw_buy_menu(screen, player)
 
         if player.lock_reason=='plant' and bomb.state=='idle':
-            t=max(0,min(PLANT_HOLD_MS, now-player.lock_start))
+            t=max(0,min(PLANT_MS, now-player.lock_start))
             pygame.draw.rect(screen,(50,50,50),(20,VIEW_H-60,320,16),border_radius=4)
-            pygame.draw.rect(screen,(0,180,255),(20,VIEW_H-60,int(320*t/PLANT_HOLD_MS),16),border_radius=4)
+            pygame.draw.rect(screen,(0,180,255),(20,VIEW_H-60,int(320*t/PLANT_MS),16),border_radius=4)
             screen.blit(font.render("PLANTING...",True,WHITE),(24,VIEW_H-80))
         if player.lock_reason=='defuse' and bomb.state=='planted':
-            t=max(0,min(DEFUSE_HOLD_MS, now-player.lock_start))
+            t=max(0,min(DEFUSE_MS, now-player.lock_start))
             pygame.draw.rect(screen,(50,50,50),(20,VIEW_H-60,320,16),border_radius=4)
-            pygame.draw.rect(screen,(0,255,120),(20,VIEW_H-60,int(320*t/DEFUSE_HOLD_MS),16),border_radius=4)
+            pygame.draw.rect(screen,(0,255,120),(20,VIEW_H-60,int(320*t/DEFUSE_MS),16),border_radius=4)
             screen.blit(font.render("DEFUSING...",True,WHITE),(24,VIEW_H-80))
         if player.lock_reason=='revive' and player.reviving_target is not None:
             t=max(0,min(REVIVE_MS, now-player.lock_start))

@@ -1,6 +1,16 @@
 import math, random, heapq, pygame
-from config import (GRID, FOV_DEGREES, FOV_RANGE, BOT_SPEED, REVIVE_MS,
-                    REVIVE_RANGE, PLANT_HOLD_MS, DEFUSE_HOLD_MS)
+from config import (
+    GRID,
+    FOV_DEGREES,
+    FOV_RANGE,
+    BOT_SPEED,
+    REVIVE_MS,
+    REVIVE_RANGE,
+    PLANT_MS,
+    DEFUSE_MS,
+    SEP_RADIUS,
+    SEP_STRENGTH,
+)
 from map import (pos_to_cell, cell_center, nearest_passable_cell,
                  move_with_collision, has_line_of_sight)
 from entities import Bullet
@@ -63,7 +73,7 @@ def astar(grid,start,goal):
 
 # avoidance
 
-def separation_force(agent, friends, radius=60, strength=0.8):
+def separation_force(agent, friends, radius=SEP_RADIUS, strength=SEP_STRENGTH):
     fx=fy=0.0
     for f in friends:
         if f is agent or not (f.alive or f.downed):
@@ -184,12 +194,12 @@ def bot_ai(agent, enemies, friends, walls, bullets, grid, nav, bomb):
         if bomb.state=='idle' and agent.team=='ATT' and bomb.in_zone(agent.pos):
             if agent.lock_reason is None:
                 agent.lock_reason='plant'; agent.lock_start=now
-            if now-agent.lock_start>=PLANT_HOLD_MS:
+            if now-agent.lock_start>=PLANT_MS:
                 bomb.commit_plant(agent.team); agent.lock_reason=None
         elif bomb.state=='planted' and agent.team=='DEF' and bomb.in_zone(agent.pos):
             if agent.lock_reason is None:
                 agent.lock_reason='defuse'; agent.lock_start=now
-            if now-agent.lock_start>=DEFUSE_HOLD_MS:
+            if now-agent.lock_start>=DEFUSE_MS:
                 bomb.commit_defuse(); agent.lock_reason=None
         else:
             if agent.lock_reason in ('plant','defuse'):
