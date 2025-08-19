@@ -1,4 +1,4 @@
-import math, pygame
+import math, pygame, random
 from config import WIDTH, HEIGHT, GRID, COLS, ROWS, RADIUS
 
 # basic helpers
@@ -55,6 +55,23 @@ def build_static_map():
         pygame.Rect(WIDTH-840, 840, 40, HEIGHT-1680),
     ]
     return walls
+
+
+def build_procedural_world(seed=None):
+    """Very small placeholder procedural generator.
+
+    The real project would create several themed areas and cover nodes.  For the
+    unit tests we simply call :func:`build_static_map` and return the grid along
+    with empty placeholders for the additional data.
+    """
+
+    if seed is not None:
+        random.seed(seed)
+    walls = build_static_map()
+    grid = build_grid(walls)
+    cover_nodes = []
+    sites = {"A": None, "B": None}
+    return walls, grid, cover_nodes, sites
 
 def build_grid(walls):
     grid=[[True for _ in range(ROWS)] for _ in range(COLS)]

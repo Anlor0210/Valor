@@ -1,7 +1,19 @@
 import pygame, math
-from config import (RADIUS, BULLET_SPEED, BULLET_RADIUS, BULLET_COOLDOWN,
-                    MAX_HP, LOW_HP_THRESH, PLAYER_SPEED, REVIVE_MS, REVIVE_RANGE,
-                    WIDTH, HEIGHT, GRID)
+
+from config import (
+    RADIUS,
+    BULLET_SPEED,
+    BULLET_RADIUS,
+    MAX_HP,
+    LOW_HP_THRESH,
+    PLAYER_SPEED,
+    REVIVE_MS,
+    REVIVE_RANGE,
+    WIDTH,
+    HEIGHT,
+    GRID,
+    WEAPONS,
+)
 from map import move_with_collision
 
 WHITE=(255,255,255)
@@ -9,10 +21,31 @@ GREEN=(70,200,100)
 GREY=(170,170,170)
 
 class Bullet:
-    __slots__=("x","y","vx","vy","team","dead")
-    def __init__(self,x,y,vx,vy,team):
-        self.x,self.y=x,y; self.vx,self.vy=vx,vy
-        self.team=team; self.dead=False
+    """Simple projectile used for all weapons.
+
+    Only the damage value differs between guns in this simplified prototype.
+    """
+
+    __slots__ = ("x", "y", "vx", "vy", "team", "dead", "dmg")
+
+    def __init__(self, x, y, vx, vy, team, dmg):
+        self.x, self.y = x, y
+        self.vx, self.vy = vx, vy
+        self.team = team
+        self.dmg = dmg
+        self.dead = False
+
+
+class Weapon:
+    """Light‑weight wrapper around the WEAPONS configuration table."""
+
+    def __init__(self, name: str):
+        data = WEAPONS[name]
+        self.name = name
+        self.price = data["price"]
+        self.dmg = data["dmg"]
+        self.rof_ms = data.get("rof_ms", 200)
+        self.mag = data.get("mag", 0)
     def update(self,walls):
         self.x+=self.vx; self.y+=self.vy
         if not (0<=self.x<=WIDTH and 0<=self.y<=HEIGHT):
@@ -24,20 +57,36 @@ class Bullet:
         pygame.draw.circle(surf,WHITE,(int(self.x-cam[0]),int(self.y-cam[1])),BULLET_RADIUS)
 
 class Agent:
-    def __init__(self,x,y,color,team,is_player=False,name=""):
-        self.x,self.y=x,y; self.color=color; self.r=RADIUS
-        self.hp=MAX_HP; self.last_shot=0; self.dir=(1,0)
-        self.alive=True; self.downed=False
-        self.downed_at=0
-        self.bleed_paused=0
-        self.bleed_paused_start=None
-        self.removed=False
-        self.team=team; self.is_player=is_player; self.name=name
-        self.lock_reason=None; self.lock_start=0
-        self.reviving_target=None
-        self.last_known_enemy=None
-        self.seen_by_att=0
-        self.seen_by_def=0
+    """Player or bot controlled character."""
+
+    def __init__(self, x, y, color, team, is_player=False, name=""):
+        self.x, self.y = x, y
+        self.color = color
+        self.r = RADIUS
+        self.hp = MAX_HP
+        self.last_shot = 0
+        self.dir = (1, 0)
+        self.alive = True
+        self.downed = False
+        self.downed_at = 0
+        self.bleed_paused = 0
+        self.bleed_paused_start = None
+        self.removed = False
+        self.team = team
+        self.is_player = is_player
+        self.name = name
+        self.lock_reason = None
+        self.lock_start = 0
+        self.reviving_target = None
+        self.last_known_enemy = None
+        self.seen_by_att = 0
+        self.seen_by_def = 0
+
+        # economy / loadout
+        self.credits = 800
+        self.loadout = {}
+        self.weapon = Weapon("Classic")
+        self.buy_time_end = 0
     @property
     def pos(self): return (self.x,self.y)
     def distance_to(self, other):
@@ -76,18 +125,46 @@ class Agent:
         self.x,self.y=move_with_collision(self.x,self.y,mvx,mvy,self.r,walls)
         if mvx!=0 or mvy!=0:
             l=math.hypot(mvx,mvy); self.dir=(mvx/l,mvy/l) if l else self.dir
-    def shoot(self,target_pos,now,bullets):
-        if now-self.last_shot<BULLET_COOLDOWN or not self.alive or self.downed:
+    def shoot(self, target_pos, now, bullets):
+        """Fire the currently equipped weapon if possible."""
+
+        if not self.alive or self.downed:
             return
         if self.lock_reason is not None:
             return
-        dx,dy=target_pos[0]-self.x, target_pos[1]-self.y
-        l=math.hypot(dx,dy)
-        if l==0:
+        if now - self.last_shot < self.weapon.rof_ms:
             return
-        vx,vy=dx/l, dy/l
-        self.last_shot=now
-        bullets.append(Bullet(self.x+vx*(self.r+6), self.y+vy*(self.r+6), vx*BULLET_SPEED, vy*BULLET_SPEED, self.team))
+
+        dx, dy = target_pos[0] - self.x, target_pos[1] - self.y
+        l = math.hypot(dx, dy)
+        if l == 0:
+            return
+        vx, vy = dx / l, dy / l
+        self.last_shot = now
+        bullets.append(
+            Bullet(
+                self.x + vx * (self.r + 6),
+                self.y + vy * (self.r + 6),
+                vx * BULLET_SPEED,
+                vy * BULLET_SPEED,
+                self.team,
+                self.weapon.dmg,
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # economy / loadout helpers
+    # ------------------------------------------------------------------
+
+    def equip(self, item_name: str) -> None:
+        """Equip a weapon from the global WEAPONS table."""
+
+        if item_name in WEAPONS:
+            self.weapon = Weapon(item_name)
+            self.loadout["weapon"] = item_name
+        else:
+            # non weapon items just stored
+            self.loadout[item_name] = True
     def draw(self,surf,cam,font):
         col=self.color
         if self.downed: col=(120,120,120)
