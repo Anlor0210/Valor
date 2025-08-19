@@ -2,7 +2,7 @@ import random, sys, pygame
 from config import *
 from map import build_static_map, build_grid, pos_to_cell, cell_center, nearest_passable_cell, has_line_of_sight
 from entities import Agent, Bullet, BombState
-from ai import bot_ai
+from ai import bot_ai, sees
 
 pygame.init()
 pygame.display.set_caption("Valor 4v4 BombMode")
@@ -68,6 +68,27 @@ def main():
     bullets=[]
     round_over=False; winner_text=""
     running=True
+
+    def draw_minimap(player):
+        scale = MINIMAP_SIZE / WIDTH
+        mini = pygame.Surface((MINIMAP_SIZE, MINIMAP_SIZE), pygame.SRCALPHA)
+        mini.fill((20,20,24))
+        for w in walls:
+            pygame.draw.rect(mini, (100,100,100), pygame.Rect(int(w.x*scale), int(w.y*scale), int(w.w*scale), int(w.h*scale)))
+        pygame.draw.circle(mini, (80,80,120), (int(bomb.zone_center[0]*scale), int(bomb.zone_center[1]*scale)), int(bomb.radius*GRID*scale),1)
+        now = pygame.time.get_ticks()
+        for ag in attackers + defenders:
+            if ag.team == player.team:
+                pygame.draw.circle(mini, ag.color, (int(ag.x*scale), int(ag.y*scale)), 3)
+            else:
+                seen_time = ag.seen_by_att if player.team=='ATT' else ag.seen_by_def
+                elapsed = now - seen_time
+                if elapsed < ENEMY_MEMORY_MS:
+                    alpha = max(50, 255 - int(255*elapsed/ENEMY_MEMORY_MS))
+                    dot = pygame.Surface((6,6), pygame.SRCALPHA)
+                    pygame.draw.circle(dot, (*ag.color, alpha), (3,3), 3)
+                    mini.blit(dot, (int(ag.x*scale)-3, int(ag.y*scale)-3))
+        screen.blit(mini, (VIEW_W - MINIMAP_SIZE - 20,20))
     while running:
         dt=clock.tick(FPS)
         for event in pygame.event.get():
@@ -144,7 +165,15 @@ def main():
                     b.dead=True; break
         bullets=[b for b in bullets if not b.dead]
 
-        tick = pygame.time.get_ticks()
+        now_tick = pygame.time.get_ticks()
+        for a in attackers:
+            for d in defenders:
+                if sees(a, d, walls):
+                    d.seen_by_att = now_tick
+                if sees(d, a, walls):
+                    a.seen_by_def = now_tick
+
+        tick = now_tick
         for ag in attackers + defenders:
             if ag.downed and tick - ag.downed_at - ag.bleed_paused >= DOWNED_TIMEOUT_MS:
                 ag.downed=False; ag.alive=False; ag.hp=0; ag.reviving_target=None
@@ -198,6 +227,7 @@ def main():
             pygame.draw.rect(screen,(40,40,40),(x,y,w,h),border_radius=4)
             pygame.draw.rect(screen,col,(x,y,int(w*frac),h),border_radius=4)
         bar(16,16,300,14,(player.hp/MAX_HP) if player.alive else 0.0, BLUE if player.team=='ATT' else RED)
+        draw_minimap(player)
 
         if player.lock_reason=='plant' and bomb.state=='idle':
             t=max(0,min(PLANT_HOLD_MS, now-player.lock_start))

@@ -36,6 +36,8 @@ class Agent:
         self.lock_reason=None; self.lock_start=0
         self.reviving_target=None
         self.last_known_enemy=None
+        self.seen_by_att=0
+        self.seen_by_def=0
     @property
     def pos(self): return (self.x,self.y)
     def distance_to(self, other):
